@@ -92,6 +92,20 @@ UPS is intentionally domain‑agnostic. I require **canonical data contracts** a
 
 ---
 
+## GUI + User Interface (Pipeline Runner)
+I built a lightweight desktop GUI to run the pipeline without the CLI and to make long runs easy to monitor.
+
+Key capabilities:
+- **Config and data selection** via file browser.
+- **Start/Stop controls** for the full pipeline.
+- **Real‑time progress** across all stages with status indicators.
+- **Live logs** streamed into the UI, with logs saved per run.
+- **Background execution** so the interface stays responsive.
+
+This UI made it faster to launch experiments, track progress, and review failures without digging through terminal output.
+
+---
+
 ## Data Management and Governance
 The system enforces a canonical data contract to guarantee consistency and prevent leakage:
 
@@ -120,6 +134,104 @@ Validation is component-scoped:
 - **Backtest #1**: foundation refinement.
 - **Backtest #2**: symbolic regression refinement.
 - **Backtest #3**: integration refinement.
+
+---
+
+## Code Highlights (Representative Snippets)
+These are small, representative snippets to show how core ideas are implemented.
+
+### Fibonacci batching (memory-aware parallelism)
+```python
+def fibonacci_batch_sizes(total_items: int) -> List[int]:
+    """
+    Generate batch sizes that sum to total_items using Fibonacci pattern.
+    """
+    if total_items <= 0:
+        return []
+    
+    if total_items == 1:
+        return [1]
+    
+    # Generate Fibonacci sequence up to total_items
+    fib_sequence = generate_fibonacci_sequence(total_items)
+    
+    if not fib_sequence:
+        return [total_items]  # Fallback: single batch
+    
+    # Build batches from Fibonacci sequence
+    batches = []
+    remaining = total_items
+    fib_idx = 0
+    
+    while remaining > 0 and fib_idx < len(fib_sequence):
+        batch_size = min(fib_sequence[fib_idx], remaining)
+        batches.append(batch_size)
+        remaining -= batch_size
+        fib_idx += 1
+    
+    # If there's still remaining, add as final batch
+    if remaining > 0:
+        batches.append(remaining)
+    
+    return batches
+```
+
+### Ingestion with schema validation
+```python
+def validate_observations(df: pd.DataFrame) -> Dict[str, Any]:
+    """Validate observations.parquet structure and content."""
+    errors = []
+    warnings = []
+    
+    # Check required columns
+    required_cols = {"entity_id", "time_id"}
+    missing_cols = required_cols - set(df.columns)
+    if missing_cols:
+        errors.append(f"Missing required columns: {missing_cols}")
+        # Early return if critical columns missing
+        return {
+            "errors": errors,
+            "warnings": warnings,
+            "validated_df": None,
+            "row_count": len(df),
+            "entity_count": 0,
+            "metric_count": 0,
+        }
+    
+    # Check entity_id is string-like
+    if "entity_id" in df.columns:
+        if not pd.api.types.is_string_dtype(df["entity_id"]):
+            warnings.append("entity_id should be string type, coercing...")
+            df["entity_id"] = df["entity_id"].astype(str)
+    
+    # Check for duplicates
+    if df.duplicated(subset=["entity_id", "time_id"]).any():
+        errors.append("Duplicate (entity_id, time_id) pairs found")
+```
+
+### Stage progress tracking in the GUI
+```python
+def update_stage(
+    self,
+    stage_name: str,
+    progress: float,
+    status: str,
+    message: str = ""
+):
+    # Clamp progress to [0.0, 1.0]
+    progress = max(0.0, min(1.0, progress))
+    
+    self.stages[stage_name] = StageProgress(
+        progress=progress,
+        status=status,
+        timestamp=time.time(),
+        message=message
+    )
+    
+    # Call callback if provided
+    if self.callback:
+        self.callback(stage_name, progress, status, message)
+```
 
 ---
 
@@ -236,3 +348,4 @@ The system produces artifacts and diagnostics that support decision-making:
 
 ## Positioning Statement
 This project shows how I build a **production‑oriented predictive system** that balances interpretability, scientific rigor, and engineering discipline. It reflects end‑to‑end ownership across data contracts, modeling, validation, performance tuning, and documentation.
+
